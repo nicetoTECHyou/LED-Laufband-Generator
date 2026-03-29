@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Laufband & GIF Export</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        canvas {
+            background: #000;
+            display: block;
+            margin: 20px auto;
+            border: 4px solid #333;
+            border-radius: 4px;
+            image-rendering: pixelated;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        input, select, button {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2d2d2d;
+            color: white;
+        }
+        button {
+            background: #007bff;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            grid-column: span 2;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 0.9em;
+            height: 1.2em;
+        }
+        .preview-info {
+            text-align: center;
+            color: #888;
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>LED Laufband Generator</h1>
+    
+    <canvas id="ledCanvas"></canvas>
+    <div class="preview-info">Vorschau (Originalgröße für Export)</div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="textInput">Text</label>
+            <input type="text" id="textInput" value="HELLO WORLD!" placeholder="Dein Text hier...">
+        </div>
+        <div class="control-group">
+            <label for="speedInput">Geschwindigkeit</label>
+            <input type="range" id="speedInput" min="1" max="10" value="5">
+        </div>
+        <div class="control-group">
+            <label for="fgColor">LED Farbe (An)</label>
+            <input type="color" id="fgColor" value="#ff0000">
+        </div>
+        <div class="control-group">
+            <label for="bgColor">Hintergrund (Aus)</label>
+            <input type="color" id="bgColor" value="#220000">
+        </div>
+        <div class="control-group">
+            <label for="dotSize">Punktgröße</label>
+            <input type="number" id="dotSize" value="4" min="1" max="10">
+        </div>
+        <div class="control-group">
+            <label for="spacing">Abstand</label>
+            <input type="number" id="spacing" value="1" min="0" max="5">
+        </div>
+        
+        <button id="exportBtn">Als GIF exportieren</button>
+    </div>
+    
+    <div id="status"></div>
+</div>
+
+<!-- gif.js Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+
+<script>
+/**
+ * Einfache 5x7 Dot-Matrix Font (Minimal-Set)
+ * Repräsentiert als Array von 5 Bytes (jeder Byte ist eine Spalte, 7 Bits hoch)
+ */
+const FONT = {
+    ' ': [0x00, 0x00, 0x00, 0x00, 0x00],
+    'A': [0x7E, 0x11, 0x11, 0x11, 0x7E],
+    'B': [0x7F, 0x49, 0x49, 0x49, 0x36],
+    'C': [0x3E, 0x41, 0x41, 0x41, 0x22],
+    'D': [0x7F, 0x41, 0x41, 0x22, 0x1C],
+    'E': [0x7F, 0x49, 0x49, 0x49, 0x41],
+    'F': [0x7F, 0x09, 0x09, 0x09, 0x01],
+    'G': [0x3E, 0x41, 0x49, 0x49, 0x7A],
+    'H': [0x7F, 0x08, 0x08, 0x08, 0x7F],
+    'I': [0x00, 0x41, 0x7F, 0x41, 0x00],
+    'J': [0x20, 0x40, 0x41, 0x3F, 0x01],
+    'K': [0x7F, 0x08, 0x14, 0x22, 0x41],
+    'L': [0x7F, 0x40, 0x40, 0x40, 0x40],
+    'M': [0x7F, 0x02, 0x0C, 0x02, 0x7F],
+    'N': [0x7F, 0x04, 0x08, 0x10, 0x7F],
+    'O': [0x3E, 0x41, 0x41, 0x41, 0x3E],
+    'P': [0x7F, 0x09, 0x09, 0x09, 0x06],
+    'Q': [0x3E, 0x41, 0x51, 0x21, 0x5E],
+    'R': [0x7F, 0x09, 0x19, 0x29, 0x46],
+    'S': [0x46, 0x49, 0x49, 0x49, 0x31],
+    'T': [0x01, 0x01, 0x7F, 0x01, 0x01],
+    'U': [0x3F, 0x40, 0x40, 0x40, 0x3F],
+    'V': [0x1F, 0x20, 0x40, 0x20, 0x1F],
+    'W': [0x3F, 0x40, 0x38, 0x40, 0x3F],
+    'X': [0x63, 0x14, 0x08, 0x14, 0x63],
+    'Y': [0x07, 0x08, 0x70, 0x08, 0x07],
+    'Z': [0x61, 0x51, 0x49, 0x45, 0x43],
+    '0': [0x3E, 0x51, 0x49, 0x45, 0x3E],
+    '1': [0x00, 0x42, 0x7F, 0x40, 0x00],
+    '2': [0x42, 0x61, 0x51, 0x49, 0x46],
+    '3': [0x21, 0x41, 0x45, 0x4B, 0x31],
+    '4': [0x18, 0x14, 0x12, 0x7F, 0x10],
+    '5': [0x27, 0x45, 0x45, 0x45, 0x39],
+    '6': [0x3C, 0x4A, 0x49, 0x49, 0x30],
+    '7': [0x01, 0x71, 0x09, 0x05, 0x03],
+    '8': [0x36, 0x49, 0x49, 0x49, 0x36],
+    '9': [0x06, 0x49, 0x49, 0x29, 0x1E],
+    '!': [0x00, 0x00, 0x5F, 0x00, 0x00],
+    '?': [0x02, 0x01, 0x51, 0x09, 0x06],
+    '.': [0x00, 0x60, 0x60, 0x00, 0x00],
+    ',': [0x00, 0x80, 0x70, 0x00, 0x00],
+    ':': [0x00, 0x36, 0x36, 0x00, 0x00],
+};
+
+const canvas = document.getElementById('ledCanvas');
+const ctx = canvas.getContext('2d');
+const textInput = document.getElementById('textInput');
+const speedInput = document.getElementById('speedInput');
+const fgColorInput = document.getElementById('fgColor');
+const bgColorInput = document.getElementById('bgColor');
+const dotSizeInput = document.getElementById('dotSize');
+const spacingInput = document.getElementById('spacing');
+const exportBtn = document.getElementById('exportBtn');
+const status = document.getElementById('status');
+
+// Matrix Parameter
+const ROWS = 7;
+const COLS = 60; // Sichtbare Spalten
+
+let offset = 0;
+let animationId;
+
+function getCharData(char) {
+    return FONT[char.toUpperCase()] || FONT[' '];
+}
+
+function drawMatrix(context, scrollPos, isExport = false) {
+    const text = textInput.value;
+    const dotSize = parseInt(dotSizeInput.value);
+    const spacing = parseInt(spacingInput.value);
+    const fgColor = fgColorInput.value;
+    const bgColor = bgColorInput.value;
+    
+    const step = dotSize + spacing;
+    
+    // Canvas Größe anpassen
+    if (!isExport) {
+        context.canvas.width = COLS * step;
+        context.canvas.height = ROWS * step;
+    }
+
+    // Hintergrund
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+
+    // Alle Zeichen in ein Bit-Array umwandeln für einfacheres Scrolling
+    let fullBitMatrix = [];
+    for (let i = 0; i < text.length; i++) {
+        const charData = getCharData(text[i]);
+        for (let col = 0; col < 5; col++) {
+            fullBitMatrix.push(charData[col]);
+        }
+        fullBitMatrix.push(0); // Leerspalte zwischen Buchstaben
+    }
+
+    // Buffer-Leerraum am Anfang/Ende hinzufügen für nahtloses Scrolling
+    const displayCols = COLS;
+    const totalMatrixWidth = fullBitMatrix.length;
+
+    for (let c = 0; c < displayCols; c++) {
+        const matrixIdx = (c + Math.floor(scrollPos)) % (totalMatrixWidth || 1);
+        const colData = totalMatrixWidth > 0 ? fullBitMatrix[matrixIdx] : 0;
+
+        for (let r = 0; r < ROWS; r++) {
+            const isOn = (colData >> r) & 1;
+            context.fillStyle = isOn ? fgColor : bgColor;
+            
+            // Punkt zeichnen (rund oder quadratisch?)
+            context.beginPath();
+            context.arc(
+                c * step + dotSize / 2, 
+                r * step + dotSize / 2, 
+                dotSize / 2, 0, Math.PI * 2
+            );
+            context.fill();
+        }
+    }
+}
+
+function animate() {
+    const speed = parseInt(speedInput.value) / 10;
+    offset += speed;
+    
+    drawMatrix(ctx, offset);
+    animationId = requestAnimationFrame(animate);
+}
+
+// GIF Export Funktion
+async function exportToGif() {
+    cancelAnimationFrame(animationId);
+    exportBtn.disabled = true;
+    status.innerText = "Bereite Export vor...";
+
+    const text = textInput.value;
+    const dotSize = parseInt(dotSizeInput.value);
+    const spacing = parseInt(spacingInput.value);
+    const step = dotSize + spacing;
+    
+    // Berechne wie viele Spalten der Text insgesamt hat
+    let totalTextCols = 0;
+    for (let i = 0; i < text.length; i++) {
+        totalTextCols += 6; // 5 für Font + 1 für Abstand
+    }
+    
+    if (totalTextCols === 0) totalTextCols = COLS;
+
+    // Lade Worker-Code als Blob, so geht es auch bei lokalen Dateien und CORS-Restriktionen.
+    let workerScriptURL;
+    try {
+        const workerResp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+        if (!workerResp.ok) throw new Error('Worker-Script konnte nicht geladen werden');
+        const workerSource = await workerResp.text();
+        const workerBlob = new Blob([workerSource], { type: 'application/javascript' });
+        workerScriptURL = URL.createObjectURL(workerBlob);
+    } catch (e) {
+        console.warn('Fallback: Direktes CDN-Worker-Skript verwendet, falls Blob nicht verfügbar', e);
+        workerScriptURL = 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js';
+    }
+
+    const gif = new GIF({
+        workers: 2,
+        quality: 10,
+        width: COLS * step,
+        height: ROWS * step,
+        workerScript: workerScriptURL
+    });
+
+    // Wir nehmen genau einen Durchlauf auf
+    const frames = totalTextCols;
+    const frameDelay = 100 / parseInt(speedInput.value); // ms
+
+    for (let i = 0; i < frames; i++) {
+        status.innerText = `Rendere Frame ${i+1} von ${frames}...`;
+        
+        // Temporäres Canvas für den Frame
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = COLS * step;
+        tempCanvas.height = ROWS * step;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        drawMatrix(tempCtx, i, true);
+        gif.addFrame(tempCanvas, {delay: frameDelay, copy: true});
+    }
+
+    gif.on('finished', function(blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        link.href = url;
+        link.download = 'led-marquee.gif';
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        }, 100);
+
+        status.innerText = "Export abgeschlossen!";
+        exportBtn.disabled = false;
+        animate(); // Animation fortsetzen
+    });
+
+    status.innerText = "Generiere GIF...";
+    gif.render();
+}
+
+exportBtn.addEventListener('click', exportToGif);
+
+// Start
+animate();
+
+</script>
+</body>
+</html>
